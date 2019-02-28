@@ -1,0 +1,17 @@
+version: '2.4'
+
+services:
+  api:
+    build: example/Xunit.Fixture.Api.Example
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/date"]
+      timeout: 1s
+      retries: 50
+
+  integration-tests:
+    build: .
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      - API_URL=http://api

@@ -1,0 +1,57 @@
+defaults: &dotnet
+  docker:
+    - image: microsoft/dotnet:2.2-sdk
+      environment:
+        VERSION_PREFIX: "1.0"
+  working_directory: ~/app
+
+version: 2
+jobs:
+  build:
+    <<: *dotnet
+    steps:
+      - checkout
+      - run:
+          name: Build
+          command: |
+            export VERSION="${VERSION_PREFIX}.${CIRCLE_BUILD_NUM}"
+            dotnet pack -c Release -o ../../artifacts src/Xunit.Fixture.Api /p:PackageVersion=$VERSION /p:Version=$VERSION  /p:AssemblyVersion=$VERSION
+            dotnet publish -c Release -o bin/publish "example/Xunit.Fixture.Api.Example"
+      - persist_to_workspace:
+          root: ~/app
+          paths: .
+
+  test:
+    docker:
+      - image: docker/compose:1.23.2
+    working_directory: ~/app
+    steps:
+      - attach_workspace:
+          at: ~/app
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Run integration tests
+          command: docker-compose up --build --remove-orphans --force-recreate --abort-on-container-exit --exit-code-from integration-tests
+
+  publish:
+    <<: *dotnet
+    steps:
+      - attach_workspace:
+          at: ~/app
+      - run: dotnet nuget push artifacts/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+
+workflows:
+  version: 2
+  build-test-publish:
+    jobs:
+      - build
+      - test:
+          requires:
+            - build
+      - publish:
+          requires:
+            - test
+          filters:
+            branches:
+              only: master
